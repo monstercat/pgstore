@@ -223,7 +223,7 @@ func (db *PGStore) save(session *sessions.Session) error {
 
 // Delete session
 func (db *PGStore) destroy(session *sessions.Session) error {
-	_, err := db.DbPool.Exec("DELETE FROM http_sessions WHERE key = $1", session.ID)
+	_, err := db.DbPool.Exec("DELETE FROM http_sessions WHERE key = $1 AND substr(key, 1, 6)=substr($1::BYTEA, 1, 6)", session.ID)
 	return err
 }
 
@@ -237,6 +237,7 @@ func (db *PGStore) createSessionsTable() error {
               created_on TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
               modified_on TIMESTAMPTZ,
               expires_on TIMESTAMPTZ);
+              CREATE INDEX IF NOT EXISTS http_sessions_substr_idx ON http_sessions(substr(key, 1, 6));
               EXCEPTION WHEN insufficient_privilege THEN
                 IF NOT EXISTS (SELECT FROM pg_catalog.pg_tables WHERE schemaname = current_schema() AND tablename = 'http_sessions') THEN
                   RAISE;
@@ -254,7 +255,7 @@ func (db *PGStore) createSessionsTable() error {
 }
 
 func (db *PGStore) selectOne(s *PGSession, key string) error {
-	stmt := "SELECT id, key, data, created_on, modified_on, expires_on FROM http_sessions WHERE key = $1"
+	stmt := "SELECT id, key, data, created_on, modified_on, expires_on FROM http_sessions WHERE key=$1 AND substr(key, 1, 6)=substr($1::BYTEA, 1, 6)"
 	err := db.DbPool.QueryRow(stmt, key).Scan(&s.ID, &s.Key, &s.Data, &s.CreatedOn, &s.ModifiedOn, &s.ExpiresOn)
 	if err != nil {
 		return errors.Wrapf(err, "Unable to find session in the database")
@@ -272,7 +273,7 @@ func (db *PGStore) insert(s *PGSession) error {
 }
 
 func (db *PGStore) update(s *PGSession) error {
-	stmt := `UPDATE http_sessions SET data=$1, modified_on=$2, expires_on=$3 WHERE key=$4`
+	stmt := `UPDATE http_sessions SET data=$1, modified_on=$2, expires_on=$3 WHERE key=$4 AND substr(key, 1, 6)=substr($4::BYTEA, 1, 6)`
 	_, err := db.DbPool.Exec(stmt, s.Data, s.ModifiedOn, s.ExpiresOn, s.Key)
 
 	return err
